@@ -7,6 +7,10 @@ const script = fs.readFileSync(
   path.join(__dirname, '..', 'agent-control.ps1'),
   'utf8'
 );
+const launcherScript = fs.readFileSync(
+  path.join(__dirname, '..', 'agent-control-launcher.ps1'),
+  'utf8'
+);
 
 test('controller script includes file-backed controller logging', () => {
   assert.match(script, /controller\.log/);
@@ -33,4 +37,18 @@ test('controller script uses per-run process log files instead of reusing fixed 
   assert.match(script, /\$Tag-\$stamp-err\.log/);
   assert.doesNotMatch(script, /Join-Path \$logDir "\$Tag\.log"/);
   assert.doesNotMatch(script, /Join-Path \$logDir "\$Tag\.err\.log"/);
+});
+
+test('controller launcher enforces a single GUI instance with a named mutex', () => {
+  assert.match(launcherScript, /System\.Threading\.Mutex/);
+  assert.match(launcherScript, /already running/i);
+  assert.match(launcherScript, /ReleaseMutex/);
+});
+
+test('controller script tracks runtime state and aggressively clears stale port owners', () => {
+  assert.match(script, /controller-state\.json/);
+  assert.match(script, /Get-NetTCPConnection/);
+  assert.match(script, /OwningProcess/);
+  assert.match(script, /ConvertTo-Json/);
+  assert.match(script, /Remove-Item -Path .*controller-state\.json/);
 });

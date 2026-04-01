@@ -3,7 +3,8 @@ param(
   [string]$NodeEntry = "server.js",
   [string]$FrpcExe = "frpc.exe",
   [string]$FrpcConfig = "frpc.toml",
-  [string]$UiUrl = "http://agent.xujinlong.asia"
+  [string]$UiUrl = "http://agent.xujinlong.asia",
+  [int]$AppPort = 3333
 )
 
 Set-StrictMode -Version Latest
@@ -25,6 +26,10 @@ $script:lastFrpcState = "stopped"
 
 function Get-LogDir {
   return (Join-Path $WorkDir "runlogs")
+}
+
+function Get-StateFilePath {
+  return (Join-Path (Ensure-LogDir) "controller-state.json")
 }
 
 function Ensure-LogDir {
@@ -105,6 +110,50 @@ function Append-Log {
   }
 }
 
+function Get-ConfiguredAppPort {
+  $envPath = Join-Path $WorkDir ".env"
+  if (Test-Path $envPath) {
+    $lines = Get-Content -Path $envPath -ErrorAction SilentlyContinue
+    foreach ($line in $lines) {
+      if ($line -match '^\s*PORT\s*=\s*(\d+)\s*$') {
+        return [int]$Matches[1]
+      }
+    }
+  }
+
+  return $AppPort
+}
+
+function Get-RuntimeState {
+  $statePath = Get-StateFilePath
+  if (!(Test-Path $statePath)) {
+    return $null
+  }
+
+  try {
+    return (Get-Content -Path $statePath -Raw -ErrorAction Stop | ConvertFrom-Json)
+  } catch {
+    return $null
+  }
+}
+
+function Save-RuntimeState {
+  $state = [ordered]@{
+    workspace = $WorkDir
+    port = Get-ConfiguredAppPort
+    nodePid = if ($script:nodeProc -and $script:nodeProc.Process -and -not $script:nodeProc.Process.HasExited) { $script:nodeProc.Process.Id } else { $null }
+    frpcPid = if ($script:frpcProc -and $script:frpcProc.Process -and -not $script:frpcProc.Process.HasExited) { $script:frpcProc.Process.Id } else { $null }
+    startedAt = (Get-Date).ToString("o")
+  }
+
+  $stateJson = $state | ConvertTo-Json
+  Set-Content -Path (Get-StateFilePath) -Value $stateJson -Encoding UTF8
+}
+
+function Clear-RuntimeState {
+  Remove-Item -Path (Join-Path (Ensure-LogDir) "controller-state.json") -Force -ErrorAction SilentlyContinue
+}
+
 function New-ProcessLogPaths {
   param(
     [Parameter(Mandatory = $true)][string]$Tag
@@ -154,6 +203,54 @@ function Get-ProcState {
   }
 
   return "running"
+}
+
+function Stop-ProcessByPid {
+  param(
+    [Parameter(Mandatory = $false)][Nullable[int]]$Pid,
+    [Parameter(Mandatory = $true)][string]$Reason
+  )
+
+  if ($null -eq $Pid) {
+    return
+  }
+
+  $process = Get-Process -Id $Pid -ErrorAction SilentlyContinue
+  if ($null -eq $process) {
+    return
+  }
+
+  Append-Log "Stopping PID $Pid ($Reason)..."
+  try {
+    Stop-Process -Id $Pid -Force -ErrorAction Stop
+  } catch {
+    Append-Log "Failed to stop PID ${Pid}: $($_.Exception.Message)"
+  }
+}
+
+function Clear-StaleManagedProcesses {
+  $state = Get-RuntimeState
+  if ($null -eq $state) {
+    return
+  }
+
+  Stop-ProcessByPid -Pid $state.frpcPid -Reason "stale frpc from controller-state.json"
+  Stop-ProcessByPid -Pid $state.nodePid -Reason "stale node from controller-state.json"
+  Clear-RuntimeState
+}
+
+function Clear-AppPortOwner {
+  param(
+    [Parameter(Mandatory = $true)][int]$Port
+  )
+
+  $owners = @(Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
+    Where-Object { $_.OwningProcess } |
+    Select-Object -ExpandProperty OwningProcess -Unique)
+
+  foreach ($ownerPid in $owners) {
+    Stop-ProcessByPid -Pid $ownerPid -Reason "port $Port owner"
+  }
 }
 
 function Update-UiStateCore {
@@ -265,18 +362,29 @@ function Start-AgentServices {
     throw "Cannot find $FrpcConfig in $WorkDir"
   }
 
-  Append-Log "Starting Node service..."
-  $script:nodeProc = Start-TrackedProcess -FilePath $nodePath -Arguments $nodeArgs -WorkingDirectory $WorkDir -Tag "node"
-  Append-Log "node logs -> $(Split-Path -Leaf $script:nodeProc.RedirectStandardOutputPath) / $(Split-Path -Leaf $script:nodeProc.RedirectStandardErrorPath)"
+  $servicePort = Get-ConfiguredAppPort
+  Clear-StaleManagedProcesses
+  Clear-AppPortOwner -Port $servicePort
 
-  Start-Sleep -Milliseconds 500
+  try {
+    Append-Log "Starting Node service..."
+    $script:nodeProc = Start-TrackedProcess -FilePath $nodePath -Arguments $nodeArgs -WorkingDirectory $WorkDir -Tag "node"
+    Append-Log "node logs -> $(Split-Path -Leaf $script:nodeProc.RedirectStandardOutputPath) / $(Split-Path -Leaf $script:nodeProc.RedirectStandardErrorPath)"
+    Save-RuntimeState
 
-  Append-Log "Starting frpc tunnel..."
-  $script:frpcProc = Start-TrackedProcess -FilePath $frpcPath -Arguments $frpcArgs -WorkingDirectory $WorkDir -Tag "frpc"
-  Append-Log "frpc logs -> $(Split-Path -Leaf $script:frpcProc.RedirectStandardOutputPath) / $(Split-Path -Leaf $script:frpcProc.RedirectStandardErrorPath)"
+    Start-Sleep -Milliseconds 500
 
-  Start-Sleep -Milliseconds 500
-  Update-UiState
+    Append-Log "Starting frpc tunnel..."
+    $script:frpcProc = Start-TrackedProcess -FilePath $frpcPath -Arguments $frpcArgs -WorkingDirectory $WorkDir -Tag "frpc"
+    Append-Log "frpc logs -> $(Split-Path -Leaf $script:frpcProc.RedirectStandardOutputPath) / $(Split-Path -Leaf $script:frpcProc.RedirectStandardErrorPath)"
+    Save-RuntimeState
+
+    Start-Sleep -Milliseconds 500
+    Update-UiState
+  } catch {
+    Stop-AgentServices
+    throw
+  }
 }
 
 function Stop-OneProcess {
@@ -312,8 +420,10 @@ function Stop-AgentServices {
   try {
     Stop-OneProcess -ProcRef $script:frpcProc -Tag "frpc"
     Stop-OneProcess -ProcRef $script:nodeProc -Tag "node"
+    Clear-AppPortOwner -Port (Get-ConfiguredAppPort)
     $script:frpcProc = $null
     $script:nodeProc = $null
+    Clear-RuntimeState
     Update-UiState
     Append-Log "All managed processes stopped."
   } finally {
