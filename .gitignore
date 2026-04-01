@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data
+data/
+runlogs/
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local secrets and machine-specific config
+.env
+.env.local
+frpc.toml
+frpc.exe
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

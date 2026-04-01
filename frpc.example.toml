@@ -1,0 +1,15 @@
+# Example FRP client config
+# Copy this file to frpc.toml and fill in your own server and token.
+
+serverAddr = "your-frps-host"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "replace-with-your-frp-token"
+
+[[proxies]]
+name = "remote-code-agent"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3333
+remotePort = 23333

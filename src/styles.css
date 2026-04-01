@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  --bg: #07111f;
+  --bg-soft: #10243a;
+  --panel: rgba(12, 24, 40, 0.92);
+  --panel-strong: rgba(17, 31, 50, 0.98);
+  --panel-muted: rgba(22, 41, 68, 0.82);
+  --border: rgba(163, 191, 250, 0.16);
+  --text: #edf5ff;
+  --text-muted: #8ea2bf;
+  --accent: #8bd3ff;
+  --accent-strong: #4fb4ff;
+  --accent-soft: rgba(139, 211, 255, 0.16);
+  --success: #8fe3b0;
+  --warning: #ffd166;
+  --danger: #ff8f8f;
+  font-family: "Segoe UI", "PingFang SC", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(79, 180, 255, 0.18), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(143, 227, 176, 0.14), transparent 22%),
+    linear-gradient(180deg, #06101d 0%, #07111f 48%, #091521 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  color: var(--text);
+  background: transparent;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}

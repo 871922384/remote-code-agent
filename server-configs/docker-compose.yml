@@ -1,0 +1,12 @@
+# docker-compose.yml — 服务器端，跑 frps
+# 放到 /opt/frps/ 目录，和 frps.toml 同级
+
+services:
+  frps:
+    image: snowdreamtech/frps:latest
+    container_name: frps
+    restart: unless-stopped
+    network_mode: host          # 直接用宿主机网络，最简单
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
+    command: ["-c", "/etc/frp/frps.toml"]
