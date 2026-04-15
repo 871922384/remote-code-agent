@@ -1,6 +1,6 @@
 const express = require('express');
 
-function createApp({ projectService, conversationService } = {}) {
+function createApp({ projectService, conversationService, runService } = {}) {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   app.get('/health', (_req, res) => {
@@ -37,6 +37,18 @@ function createApp({ projectService, conversationService } = {}) {
       text: req.body.text,
     });
     res.status(201).json({ message });
+  });
+  app.post('/conversations/:conversationId/runs', async (req, res, next) => {
+    try {
+      const run = await runService.startRun({
+        conversationId: req.params.conversationId,
+        cwd: req.body.cwd,
+        prompt: req.body.prompt,
+      });
+      res.status(201).json({ run });
+    } catch (error) {
+      next(error);
+    }
   });
   return app;
 }
