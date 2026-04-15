@@ -50,6 +50,14 @@ function createApp({ projectService, conversationService, runService } = {}) {
       next(error);
     }
   });
+  app.post('/runs/:runId/interrupt', (req, res) => {
+    const ok = runService ? runService.interruptRun(req.params.runId) : false;
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+  app.post('/runs/:runId/confirm', async (req, res) => {
+    const result = runService ? await runService.confirmRun(req.params.runId) : { ok: false };
+    res.status(result.ok ? 200 : 404).json(result);
+  });
   return app;
 }
 
