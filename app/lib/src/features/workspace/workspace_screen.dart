@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../models/conversation_event.dart';
 import '../../models/conversation_summary.dart';
+import '../conversation/conversation_screen.dart';
 import 'conversation_strip.dart';
 
 class WorkspaceScreen extends StatelessWidget {
@@ -29,6 +31,24 @@ class WorkspaceScreen extends StatelessWidget {
                 return ListTile(
                   title: Text(conversation.lastMessagePreview),
                   trailing: Text(conversation.status),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ConversationScreen(
+                          title: conversation.title,
+                          events: const [
+                            ConversationEvent.message(
+                              text: '先看为什么重复入库',
+                              role: 'user',
+                            ),
+                            ConversationEvent.action(label: 'reading files'),
+                          ],
+                          canConfirm: false,
+                          canInterrupt: true,
+                        ),
+                      ),
+                    );
+                  },
                 );
               }).toList(),
             ),
