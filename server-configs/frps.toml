@@ -1,7 +1,0 @@
-# frps.toml — server side
-# live server: 38.47.122.41
-
-bindPort = 7000
-
-auth.method = "token"
-auth.token  = "openclaw_frp_2026_secure_token"

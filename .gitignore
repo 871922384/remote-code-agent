@@ -23,3 +23,8 @@ frpc.exe
 Thumbs.db
 .vscode/
 .idea/
+
+# Flutter local build state
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/build/
