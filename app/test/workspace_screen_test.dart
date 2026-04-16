@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agent_workbench/src/app_scope.dart';
 import 'package:agent_workbench/src/features/workspace/workspace_screen.dart';
+import 'package:agent_workbench/src/logging/app_logger.dart';
 import 'package:agent_workbench/src/models/conversation_summary.dart';
 
 import 'support/fake_api_client.dart';
@@ -26,6 +27,7 @@ void main() {
             ],
           },
         ),
+        logger: AppLogger(),
         child: const MaterialApp(
           home: WorkspaceScreen(
             projectId: '/Users/rex/code/alpha-api',

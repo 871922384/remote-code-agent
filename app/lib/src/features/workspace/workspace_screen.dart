@@ -28,6 +28,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   List<ConversationSummary> _conversations = const [];
   bool _loading = true;
   bool _didLoad = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -45,15 +46,33 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Future<void> _loadConversations() async {
-    final conversations =
-        await WorkbenchScope.of(context).apiClient.fetchConversations(
-              widget.projectId,
-            );
-    if (!mounted) return;
-    setState(() {
-      _conversations = conversations;
-      _loading = false;
-    });
+    WorkbenchScope.of(context).logger.info(
+      'ui',
+      'Loading recent activity for ${widget.projectName}',
+      detailed: true,
+    );
+    try {
+      final conversations =
+          await WorkbenchScope.of(context).apiClient.fetchConversations(
+                widget.projectId,
+              );
+      if (!mounted) return;
+      setState(() {
+        _conversations = conversations;
+        _loading = false;
+        _loadError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = error.toString();
+      });
+      WorkbenchScope.of(context).logger.error(
+        'ui',
+        'Failed to load recent activity: $error',
+      );
+    }
   }
 
   Future<void> _openConversation({
@@ -62,14 +81,30 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     String? activeRunId,
     bool requiresConfirmation = false,
   }) async {
+    final scope = WorkbenchScope.of(context);
+    scope.logger.info(
+      'ui',
+      conversationId == null
+          ? 'Opening new conversation in ${widget.projectName}'
+          : 'Opening conversation $conversationId',
+      detailed: true,
+    );
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ConversationScreen(
-          title: title,
-          projectId: widget.projectId,
-          conversationId: conversationId,
-          canConfirm: requiresConfirmation,
-          canInterrupt: activeRunId != null,
+        builder: (_) => WorkbenchScope(
+          apiClient: scope.apiClient,
+          logger: scope.logger,
+          daemonConnection: scope.daemonConnection,
+          updateDaemonConnection: scope.updateDaemonConnection,
+          updateDetailedLogging: scope.updateDetailedLogging,
+          apiClientFactory: scope.apiClientFactory,
+          child: ConversationScreen(
+            title: title,
+            projectId: widget.projectId,
+            conversationId: conversationId,
+            canConfirm: requiresConfirmation,
+            canInterrupt: activeRunId != null,
+          ),
         ),
       ),
     );
@@ -121,6 +156,36 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
+                    : _loadError != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Couldn\'t load recent activity.',
+                              style: Theme.of(context).textTheme.titleMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _loadError!,
+                              style: Theme.of(context).textTheme.bodySmall,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton(
+                              onPressed: () {
+                                setState(() {
+                                  _loading = true;
+                                  _loadError = null;
+                                });
+                                _loadConversations();
+                              },
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
                     : ListView.separated(
                         itemCount: _conversations.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 12),

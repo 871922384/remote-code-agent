@@ -1,11 +1,19 @@
 import 'dart:convert';
 
 import 'package:agent_workbench/src/data/api_client.dart';
+import 'package:agent_workbench/src/logging/app_logger.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('defaultBaseUri uses the Android emulator host bridge', () {
+    expect(
+      ApiClient.defaultBaseUri,
+      Uri.parse('http://10.0.2.2:3333'),
+    );
+  });
+
   test('fetchProjects maps daemon project payloads into project summaries',
       () async {
     final client = ApiClient(
@@ -114,8 +122,10 @@ void main() {
       () async {
     final client = ApiClient(
       baseUri: Uri.parse('http://127.0.0.1:3333'),
+      authToken: 'top-secret',
       httpClient: MockClient((request) async {
         expect(request.url.path, '/health');
+        expect(request.headers['authorization'], 'Bearer top-secret');
         return http.Response(
           jsonEncode({
             'ok': true,
@@ -130,5 +140,51 @@ void main() {
     final ok = await client.checkHealth();
 
     expect(ok, isTrue);
+  });
+
+  test('checkHealth writes detailed network logs without exposing the token',
+      () async {
+    final logger = AppLogger(detailedLoggingEnabled: true);
+    final client = ApiClient(
+      baseUri: Uri.parse('http://127.0.0.1:3333'),
+      authToken: 'top-secret',
+      logger: logger,
+      httpClient: MockClient((request) async {
+        return http.Response(
+          jsonEncode({'ok': true}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.checkHealth();
+
+    final text = logger.formatVisibleLogs();
+    expect(text, contains('GET /health (auth: bearer)'));
+    expect(text, contains('GET /health -> 200'));
+    expect(text, isNot(contains('top-secret')));
+  });
+
+  test('watchEvents appends the auth token to the websocket url', () async {
+    late Uri capturedUri;
+    final client = ApiClient(
+      baseUri: Uri.parse('https://daemon.example.com:3333'),
+      authToken: 'ws-secret',
+      webSocketFactory: (uri) {
+        capturedUri = uri;
+        throw StateError('stop after capturing websocket uri');
+      },
+    );
+
+    await expectLater(
+      client.watchEvents(),
+      emitsError(isA<StateError>()),
+    );
+
+    expect(capturedUri.scheme, 'wss');
+    expect(capturedUri.host, 'daemon.example.com');
+    expect(capturedUri.path, '/ws');
+    expect(capturedUri.queryParameters['token'], 'ws-secret');
   });
 }

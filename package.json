@@ -3,6 +3,7 @@
   "private": true,
   "description": "Mac-only Codex daemon plus Android Flutter client",
   "scripts": {
+    "build:macos:companion": "./scripts/build_macos_companion.sh",
     "test": "npm run test:daemon && npm run test:app",
     "test:daemon": "npm --prefix daemon test",
     "test:app": "cd app && flutter test"

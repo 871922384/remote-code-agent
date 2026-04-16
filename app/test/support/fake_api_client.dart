@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_workbench/src/data/api_client.dart';
+import 'package:agent_workbench/src/logging/app_logger.dart';
 import 'package:agent_workbench/src/models/conversation_event.dart';
 import 'package:agent_workbench/src/models/conversation_summary.dart';
 import 'package:agent_workbench/src/models/project_summary.dart';
@@ -8,21 +9,32 @@ import 'package:agent_workbench/src/models/realtime_event.dart';
 
 class FakeApiClient extends ApiClient {
   FakeApiClient({
+    Uri? baseUri,
+    String? authToken,
     this.projects = const [],
     this.conversations = const {},
+    this.conversationsError,
     this.timelines = const {},
     this.healthOk = true,
     this.projectsError,
     Stream<RealtimeEvent>? events,
+    this.healthCheckAuthToken,
+    AppLogger? logger,
   })  : _events = events ?? const Stream.empty(),
-        super(baseUri: Uri.parse('http://127.0.0.1:3333'));
+        super(
+          baseUri: baseUri ?? Uri.parse('http://127.0.0.1:3333'),
+          authToken: authToken,
+          logger: logger,
+        );
 
   final List<ProjectSummary> projects;
   final Map<String, List<ConversationSummary>> conversations;
+  final Object? conversationsError;
   final Map<String, List<ConversationEvent>> timelines;
   final Stream<RealtimeEvent> _events;
   final bool healthOk;
   final Object? projectsError;
+  final String? healthCheckAuthToken;
 
   final List<String> appendedMessages = [];
   final List<String> startedPrompts = [];
@@ -37,6 +49,9 @@ class FakeApiClient extends ApiClient {
 
   @override
   Future<List<ConversationSummary>> fetchConversations(String projectId) async {
+    if (conversationsError != null) {
+      throw conversationsError!;
+    }
     return conversations[projectId] ?? const [];
   }
 
@@ -85,5 +100,10 @@ class FakeApiClient extends ApiClient {
   Stream<RealtimeEvent> watchEvents() => _events;
 
   @override
-  Future<bool> checkHealth() async => healthOk;
+  Future<bool> checkHealth() async {
+    if (healthCheckAuthToken != null && authToken != healthCheckAuthToken) {
+      throw const ApiException('Unauthorized');
+    }
+    return healthOk;
+  }
 }

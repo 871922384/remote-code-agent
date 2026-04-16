@@ -64,7 +64,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _eventsSubscription = WorkbenchScope.of(context)
         .apiClient
         .watchEvents()
-        .listen(_handleRealtimeEvent);
+        .listen(
+          _handleRealtimeEvent,
+          onError: _handleRealtimeError,
+        );
     if (_conversationId != null) {
       _loadTimeline();
     }
@@ -88,6 +91,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return;
     }
 
+    WorkbenchScope.of(context).logger.debug(
+      'realtime',
+      'Received ${event.kind} for ${event.conversationId}',
+    );
     setState(() {
       switch (event.kind) {
         case 'run.started':
@@ -120,6 +127,23 @@ class _ConversationScreenState extends State<ConversationScreen> {
     });
   }
 
+  void _handleRealtimeError(Object error, StackTrace stackTrace) {
+    WorkbenchScope.of(context).logger.error(
+      'realtime',
+      'Realtime subscription failed: $error',
+    );
+    if (!mounted) return;
+    setState(() {
+      _events = [
+        ..._events,
+        ConversationEvent.error(
+          message: error.toString(),
+          createdAt: DateTime.now().toUtc(),
+        ),
+      ];
+    });
+  }
+
   String _buildTitle(String text) {
     final collapsed = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (collapsed.length <= 48) return collapsed;
@@ -146,6 +170,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
     });
 
     try {
+      WorkbenchScope.of(context).logger.info(
+        'ui',
+        'Sending message in ${widget.projectId}',
+        detailed: true,
+      );
       var conversationId = _conversationId;
       if (conversationId == null) {
         final created =
@@ -165,7 +194,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       }
 
       final runId = await WorkbenchScope.of(context).apiClient.startRun(
-            conversationId: conversationId!,
+            conversationId: conversationId,
             cwd: widget.projectId,
             prompt: text,
           );
@@ -176,6 +205,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
         _canInterrupt = runId != null;
       });
     } catch (error) {
+      WorkbenchScope.of(context).logger.error(
+        'ui',
+        'Failed to send message: $error',
+      );
       if (!mounted) return;
       setState(() {
         _events = [
@@ -197,6 +230,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _interruptRun() async {
     final runId = _activeRunId;
     if (runId == null) return;
+    WorkbenchScope.of(context).logger.info(
+      'ui',
+      'Interrupting run $runId',
+      detailed: true,
+    );
     await WorkbenchScope.of(context).apiClient.interruptRun(runId);
     if (!mounted) return;
     setState(() {

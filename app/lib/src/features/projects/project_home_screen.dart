@@ -24,6 +24,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   }
 
   Future<void> _refreshProjects() async {
+    WorkbenchScope.of(context).logger.info(
+      'ui',
+      'Refreshing projects',
+      detailed: true,
+    );
     setState(() {
       _projectsFuture = WorkbenchScope.of(context).apiClient.fetchProjects();
     });
@@ -31,12 +36,17 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
   Future<void> _openConnectionSettings() async {
     final scope = WorkbenchScope.of(context);
+    scope.logger.info('ui', 'Opening connection settings', detailed: true);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ConnectionSettingsScreen(
-          initialUri: scope.daemonBaseUri,
+          initialUri: scope.daemonConnection.baseUri!,
+          initialAuthToken: scope.daemonConnection.authToken,
+          initialDetailedLogsEnabled:
+              scope.daemonConnection.detailedLogsEnabled,
+          logger: scope.logger,
           apiClientFactory: scope.apiClientFactory,
-          onSave: scope.updateDaemonBaseUri,
+          onSave: scope.updateDaemonConnection,
         ),
       ),
     );
@@ -46,6 +56,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scope = WorkbenchScope.of(context);
     return FutureBuilder<List<ProjectSummary>>(
       future: _projectsFuture,
       builder: (context, snapshot) {
@@ -91,7 +102,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                                 const SizedBox(height: 8),
                                 Text(
                                   WorkbenchScope.of(context)
-                                      .daemonBaseUri
+                                      .daemonConnection
+                                      .baseUri!
                                       .toString(),
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
@@ -103,6 +115,42 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                               ],
                             ),
                           )
+                        : projects.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'No projects found',
+                                      style:
+                                          Theme.of(context).textTheme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text('Daemon connected at'),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      WorkbenchScope.of(context)
+                                          .daemonConnection
+                                          .baseUri!
+                                          .toString(),
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Make sure your Mac has project folders under ~/code.',
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    OutlinedButton(
+                                      onPressed: _refreshProjects,
+                                      child: const Text('Refresh'),
+                                    ),
+                                  ],
+                                ),
+                              )
                         : ListView.separated(
                             itemCount: projects.length,
                             separatorBuilder: (_, __) =>
@@ -112,12 +160,24 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                               return ProjectCard(
                                 project: project,
                                 onTap: () {
-                                  Navigator.of(context)
-                                      .push(
+                              Navigator.of(context)
+                                  .push(
                                         MaterialPageRoute(
-                                          builder: (_) => WorkspaceScreen(
-                                            projectId: project.id,
-                                            projectName: project.name,
+                                          builder: (_) => WorkbenchScope(
+                                            apiClient: scope.apiClient,
+                                            logger: scope.logger,
+                                            daemonConnection:
+                                                scope.daemonConnection,
+                                            updateDaemonConnection:
+                                                scope.updateDaemonConnection,
+                                            updateDetailedLogging:
+                                                scope.updateDetailedLogging,
+                                            apiClientFactory:
+                                                scope.apiClientFactory,
+                                            child: WorkspaceScreen(
+                                              projectId: project.id,
+                                              projectName: project.name,
+                                            ),
                                           ),
                                         ),
                                       )

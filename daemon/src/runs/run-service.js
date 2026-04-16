@@ -44,61 +44,17 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     insertRun.run(runId, conversationId, 'running', startedAt);
     updateConversationStatus.run('running', startedAt, conversationId);
 
-    const { command, args } = buildCodexCommand({ codexBin, prompt });
-    const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
-    activeRuns.set(runId, child);
-    const stream = readline.createInterface({ input: child.stdout });
-
-    if (eventBroker) {
-      eventBroker.publish({
-        kind: 'run.started',
-        runId,
-        conversationId,
-        createdAt: startedAt,
-      });
-    }
-
-    const closePromise = new Promise((resolve, reject) => {
-      child.once('error', reject);
-      child.once('close', (code) => {
-        if (code === 0) {
-          resolve();
-          return;
-        }
-        reject(new Error(`Codex exited with code ${code}`));
-      });
+    const launchedProcess = launchCodexProcess({
+      command: codexBin,
+      prompt,
+      cwd,
     });
-
+    const { child, spawnPromise } = launchedProcess;
     try {
-      for await (const line of stream) {
-        const event = parseCodexLine(line);
-        const createdAt = new Date().toISOString();
-        insertEvent.run(randomUUID(), runId, event.kind, JSON.stringify(event.payload), createdAt);
-        if (event.kind === 'message.created') {
-          insertMessage.run(randomUUID(), conversationId, event.payload.role, event.payload.text, createdAt);
-        }
-        if (eventBroker) {
-          eventBroker.publish({ runId, conversationId, ...event, createdAt });
-        }
-      }
-
-      await closePromise;
-      const endedAt = new Date().toISOString();
-      updateRun.run('completed', endedAt, runId);
-      updateConversationStatus.run('completed', endedAt, conversationId);
-      if (eventBroker) {
-        eventBroker.publish({
-          kind: 'run.completed',
-          runId,
-          conversationId,
-          createdAt: endedAt,
-        });
-      }
-      return { id: runId, conversationId, status: 'completed', startedAt, endedAt };
+      await spawnPromise;
     } catch (error) {
+      await launchedProcess.closePromise.catch(() => {});
       const endedAt = new Date().toISOString();
-      updateRun.run('failed', endedAt, runId);
-      updateConversationStatus.run('failed', endedAt, conversationId);
       if (eventBroker) {
         eventBroker.publish({
           kind: 'run.failed',
@@ -108,10 +64,30 @@ function createRunService({ db, codexBin, eventBroker = null }) {
           payload: { message: error.message },
         });
       }
+      updateRun.run('failed', endedAt, runId);
+      updateConversationStatus.run('failed', endedAt, conversationId);
       throw error;
-    } finally {
-      activeRuns.delete(runId);
     }
+
+    activeRuns.set(runId, child);
+    if (eventBroker) {
+      eventBroker.publish({
+        kind: 'run.started',
+        runId,
+        conversationId,
+        createdAt: startedAt,
+      });
+    }
+
+    void processRun({
+      child,
+      stdout: launchedProcess.stdout,
+      stderr: launchedProcess.stderr,
+      closePromise: launchedProcess.closePromise,
+      conversationId,
+      runId,
+    });
+    return { id: runId, conversationId, status: 'running', startedAt, endedAt: null };
   }
 
   function listRunEvents(runId) {
@@ -183,6 +159,117 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     interruptRun,
     confirmRun,
   };
+
+  async function processRun({ child, stdout, stderr, closePromise, conversationId, runId }) {
+    try {
+      const stderrTask = (async () => {
+        for await (const line of stderr) {
+          const createdAt = new Date().toISOString();
+          insertEvent.run(
+            randomUUID(),
+            runId,
+            'run.error',
+            JSON.stringify({ message: line }),
+            createdAt,
+          );
+          if (eventBroker) {
+            eventBroker.publish({
+              kind: 'run.error',
+              runId,
+              conversationId,
+              createdAt,
+              payload: { message: line },
+            });
+          }
+        }
+      })();
+
+      for await (const line of stdout) {
+        const event = parseCodexLine(line);
+        const createdAt = new Date().toISOString();
+        insertEvent.run(randomUUID(), runId, event.kind, JSON.stringify(event.payload), createdAt);
+        if (event.kind === 'message.created') {
+          insertMessage.run(randomUUID(), conversationId, event.payload.role, event.payload.text, createdAt);
+        }
+        if (eventBroker) {
+          eventBroker.publish({ runId, conversationId, ...event, createdAt });
+        }
+      }
+
+      await stderrTask;
+      await closePromise;
+      const endedAt = new Date().toISOString();
+      updateRun.run('completed', endedAt, runId);
+      updateConversationStatus.run('completed', endedAt, conversationId);
+      if (eventBroker) {
+        eventBroker.publish({
+          kind: 'run.completed',
+          runId,
+          conversationId,
+          createdAt: endedAt,
+        });
+      }
+    } catch (error) {
+      if (!child.killed) {
+        child.kill('SIGTERM');
+      }
+      const endedAt = new Date().toISOString();
+      updateRun.run('failed', endedAt, runId);
+      updateConversationStatus.run('failed', endedAt, conversationId);
+      if (eventBroker) {
+        eventBroker.publish({
+          kind: 'run.failed',
+          runId,
+          conversationId,
+          createdAt: endedAt,
+          payload: { message: error.message },
+        });
+      }
+    } finally {
+      activeRuns.delete(runId);
+    }
+  }
+}
+
+function launchCodexProcess({ command, prompt, cwd }) {
+  const { args } = buildCodexCommand({ codexBin: command, prompt });
+  const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const spawnPromise = waitForSpawn(child, command);
+  const stdout = readline.createInterface({ input: child.stdout });
+  const stderr = readline.createInterface({ input: child.stderr });
+  const closePromise = waitForExit(child);
+  child.stdin.end();
+  return { child, spawnPromise, stdout, stderr, closePromise };
+}
+
+function waitForSpawn(child, command) {
+  return new Promise((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', (error) => {
+      if (error?.code === 'ENOENT') {
+        reject(
+          new Error(
+            `Codex executable was not found: ${command}. Set CODEX_BIN to an absolute codex path.`
+          )
+        );
+        return;
+      }
+      reject(error);
+    });
+  });
+}
+
+function waitForExit(child) {
+  return new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code === 0 || code === null) {
+        resolve();
+        return;
+      }
+      reject(new Error(`Codex exited with code ${code}`));
+    });
+  });
 }
 
 module.exports = {

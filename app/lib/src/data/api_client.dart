@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../logging/app_logger.dart';
 import '../models/conversation_event.dart';
 import '../models/conversation_summary.dart';
 import '../models/project_summary.dart';
@@ -18,22 +19,34 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
+  static Uri normalizeBaseUri(Uri uri) {
+    final host = uri.host.toLowerCase();
+    if (host == '127.0.0.1' || host == 'localhost') {
+      return uri.replace(host: '10.0.2.2');
+    }
+    return uri;
+  }
+
   static Uri get defaultBaseUri => Uri.parse(
         const String.fromEnvironment(
           'AGENT_DAEMON_BASE_URL',
-          defaultValue: 'http://127.0.0.1:3333',
+          defaultValue: 'http://10.0.2.2:3333',
         ),
       );
 
   ApiClient({
     Uri? baseUri,
+    this.authToken,
+    this.logger,
     http.Client? httpClient,
     WebSocketChannel Function(Uri uri)? webSocketFactory,
-  })  : baseUri = baseUri ?? defaultBaseUri,
+  })  : baseUri = normalizeBaseUri(baseUri ?? defaultBaseUri),
         _httpClient = httpClient ?? http.Client(),
         _webSocketFactory = webSocketFactory ?? WebSocketChannel.connect;
 
   final Uri baseUri;
+  final String? authToken;
+  final AppLogger? logger;
   final http.Client _httpClient;
   final WebSocketChannel Function(Uri uri) _webSocketFactory;
 
@@ -133,13 +146,19 @@ class ApiClient {
   }
 
   Stream<RealtimeEvent> watchEvents() async* {
-    final channel = _webSocketFactory(_webSocketUri());
+    final uri = _webSocketUri();
+    logger?.debug('network', 'Connecting websocket ${uri.path}');
+    final channel = _webSocketFactory(uri);
     try {
       await for (final raw in channel.stream) {
         final json = jsonDecode(raw as String) as Map<String, dynamic>;
         yield RealtimeEvent.fromJson(json);
       }
+    } catch (error) {
+      logger?.error('network', 'WebSocket failed: $error');
+      rethrow;
     } finally {
+      logger?.debug('network', 'Closing websocket ${uri.path}');
       await channel.sink.close();
     }
   }
@@ -149,29 +168,71 @@ class ApiClient {
       'https' => 'wss',
       _ => 'ws',
     };
+    final token = authToken?.trim();
     return baseUri.replace(
       scheme: scheme,
       path: '/ws',
-      query: null,
+      queryParameters: {
+        ...baseUri.queryParameters,
+        if (token != null && token.isNotEmpty) 'token': token,
+      },
       fragment: null,
     );
   }
 
   Future<Map<String, dynamic>> _getJson(String path) async {
-    final response = await _httpClient.get(_resolve(path));
-    return _decodeJson(response);
+    final uri = _resolve(path);
+    logger?.debug('network', 'GET ${uri.path}${_authSuffix()}');
+    try {
+      final response = await _httpClient.get(
+        uri,
+        headers: _requestHeaders(),
+      );
+      logger?.debug('network', 'GET ${uri.path} -> ${response.statusCode}');
+      return _decodeJson(response);
+    } catch (error) {
+      logger?.error('network', 'GET ${uri.path} failed: $error');
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> _postJson(
     String path, {
     required Map<String, dynamic> body,
   }) async {
-    final response = await _httpClient.post(
-      _resolve(path),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode(body),
-    );
-    return _decodeJson(response);
+    final uri = _resolve(path);
+    logger?.debug('network', 'POST ${uri.path}${_authSuffix()}');
+    try {
+      final response = await _httpClient.post(
+        uri,
+        headers: {
+          'content-type': 'application/json',
+          ..._requestHeaders(),
+        },
+        body: jsonEncode(body),
+      );
+      logger?.debug('network', 'POST ${uri.path} -> ${response.statusCode}');
+      return _decodeJson(response);
+    } catch (error) {
+      logger?.error('network', 'POST ${uri.path} failed: $error');
+      rethrow;
+    }
+  }
+
+  Map<String, String> _requestHeaders() {
+    final token = authToken?.trim();
+    if (token == null || token.isEmpty) {
+      return const {};
+    }
+    return {'authorization': 'Bearer $token'};
+  }
+
+  String _authSuffix() {
+    final token = authToken?.trim();
+    if (token == null || token.isEmpty) {
+      return ' (auth: none)';
+    }
+    return ' (auth: bearer)';
   }
 
   Uri _resolve(String path) {

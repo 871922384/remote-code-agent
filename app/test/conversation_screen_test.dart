@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agent_workbench/src/app_scope.dart';
 import 'package:agent_workbench/src/features/conversation/conversation_screen.dart';
+import 'package:agent_workbench/src/logging/app_logger.dart';
 import 'package:agent_workbench/src/models/conversation_event.dart';
 
 import 'support/fake_api_client.dart';
@@ -31,6 +32,7 @@ void main() {
     await tester.pumpWidget(
       WorkbenchScope(
         apiClient: client,
+        logger: AppLogger(),
         child: const MaterialApp(
           home: ConversationScreen(
             title: 'Fix billing callback',
@@ -49,5 +51,29 @@ void main() {
         findsOneWidget);
     expect(find.text('Interrupt'), findsOneWidget);
     expect(find.text('Continue the conversation'), findsOneWidget);
+  });
+
+  testWidgets('keeps the conversation screen alive when realtime events fail',
+      (tester) async {
+    final client = FakeApiClient(
+      events: Stream<Never>.error(StateError('websocket dropped')),
+    );
+
+    await tester.pumpWidget(
+      WorkbenchScope(
+        apiClient: client,
+        logger: AppLogger(),
+        child: const MaterialApp(
+          home: ConversationScreen(
+            title: 'Fix billing callback',
+            projectId: '/Users/rex/code/alpha-api',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('websocket dropped'), findsOneWidget);
   });
 }

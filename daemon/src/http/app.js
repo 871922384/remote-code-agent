@@ -1,8 +1,28 @@
 const express = require('express');
 
-function createApp({ projectService, conversationService, runService } = {}) {
+function createApp({
+  projectService,
+  conversationService,
+  runService,
+  authToken = null,
+} = {}) {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+  app.use((req, res, next) => {
+    if (!authToken) {
+      next();
+      return;
+    }
+
+    const authorization = req.get('authorization') || '';
+    const expected = `Bearer ${authToken}`;
+    if (authorization === expected) {
+      next();
+      return;
+    }
+
+    res.status(401).json({ error: 'Unauthorized' });
+  });
   app.get('/health', (_req, res) => {
     res.json({
       ok: true,

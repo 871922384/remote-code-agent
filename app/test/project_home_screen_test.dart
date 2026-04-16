@@ -52,4 +52,26 @@ void main() {
     expect(find.text('Couldn\'t reach the daemon.'), findsOneWidget);
     expect(find.text('Connection settings'), findsOneWidget);
   });
+
+  testWidgets(
+      'shows an empty workspace state when the daemon is reachable but no projects were found',
+      (tester) async {
+    await tester.pumpWidget(
+      AgentWorkbenchApp(
+        apiClient: FakeApiClient(
+          projects: const [],
+        ),
+        connectionStore: FakeDaemonConnectionStore(
+          savedUri: Uri.parse('http://10.0.2.2:3333'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No projects found'), findsOneWidget);
+    expect(find.text('Daemon connected at'), findsOneWidget);
+    expect(find.text('http://10.0.2.2:3333'), findsOneWidget);
+    expect(find.text('Make sure your Mac has project folders under ~/code.'),
+        findsOneWidget);
+  });
 }

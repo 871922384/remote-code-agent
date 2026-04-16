@@ -17,10 +17,15 @@ const eventBroker = new EventBroker();
 const projectService = createProjectService({ workspaceRoot: config.workspaceRoot, db });
 const conversationService = createConversationService({ db });
 const runService = createRunService({ db, codexBin: config.codexBin, eventBroker });
-const app = createApp({ projectService, conversationService, runService });
+const app = createApp({
+  projectService,
+  conversationService,
+  runService,
+  authToken: config.authToken,
+});
 
 const server = app.listen(config.port, config.host, () => {
   console.log(`[daemon] listening on http://${config.host}:${config.port}`);
 });
 
-attachWebSocketServer(server, eventBroker);
+attachWebSocketServer(server, eventBroker, { authToken: config.authToken });
