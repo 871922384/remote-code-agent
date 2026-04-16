@@ -6,12 +6,16 @@ const List<ProjectSummary> seededProjects = [
     id: '/Users/rex/code/alpha-api',
     name: 'alpha-api',
     path: '~/code/alpha-api',
+    lastSummary: 'Billing callback thread needs your review.',
+    runningConversationCount: 2,
     pinned: true,
   ),
   ProjectSummary(
     id: '/Users/rex/code/beta-admin',
     name: 'beta-admin',
     path: '~/code/beta-admin',
+    lastSummary: 'No active conversations right now.',
+    runningConversationCount: 0,
   ),
 ];
 
