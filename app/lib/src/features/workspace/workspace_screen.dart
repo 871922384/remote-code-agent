@@ -1,22 +1,81 @@
 import 'package:flutter/material.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
-import '../../models/conversation_event.dart';
+import '../../app_scope.dart';
 import '../../models/conversation_summary.dart';
 import '../../theme/workbench_tokens.dart';
 import '../conversation/conversation_screen.dart';
-import 'conversation_strip.dart';
 import 'conversation_state_badge.dart';
+import 'conversation_strip.dart';
 
-class WorkspaceScreen extends StatelessWidget {
+class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({
     super.key,
+    required this.projectId,
     required this.projectName,
-    required this.conversations,
+    this.conversations = const [],
   });
 
+  final String projectId;
   final String projectName;
   final List<ConversationSummary> conversations;
+
+  @override
+  State<WorkspaceScreen> createState() => _WorkspaceScreenState();
+}
+
+class _WorkspaceScreenState extends State<WorkspaceScreen> {
+  List<ConversationSummary> _conversations = const [];
+  bool _loading = true;
+  bool _didLoad = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _conversations = widget.conversations;
+    _loading = widget.conversations.isEmpty;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoad) return;
+    _didLoad = true;
+    _loadConversations();
+  }
+
+  Future<void> _loadConversations() async {
+    final conversations =
+        await WorkbenchScope.of(context).apiClient.fetchConversations(
+              widget.projectId,
+            );
+    if (!mounted) return;
+    setState(() {
+      _conversations = conversations;
+      _loading = false;
+    });
+  }
+
+  Future<void> _openConversation({
+    required String title,
+    String? conversationId,
+    String? activeRunId,
+    bool requiresConfirmation = false,
+  }) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ConversationScreen(
+          title: title,
+          projectId: widget.projectId,
+          conversationId: conversationId,
+          canConfirm: requiresConfirmation,
+          canInterrupt: activeRunId != null,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadConversations();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,21 +86,31 @@ class WorkspaceScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(projectName,
-                  style: Theme.of(context).textTheme.headlineMedium),
+              Text(
+                widget.projectName,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
               const SizedBox(height: 8),
               Text(
                 'Switch between active threads and keep the current run in view.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 20),
-              ConversationStrip(conversations: conversations),
+              ConversationStrip(
+                conversations: _conversations,
+                onTapConversation: (conversation) => _openConversation(
+                  title: conversation.title,
+                  conversationId: conversation.id,
+                  activeRunId: conversation.activeRunId,
+                  requiresConfirmation: conversation.requiresConfirmation,
+                ),
+              ),
               const SizedBox(height: 20),
               TDButton(
                 text: 'New conversation',
                 type: TDButtonType.fill,
                 isBlock: true,
-                onTap: () {},
+                onTap: () => _openConversation(title: 'New conversation'),
               ),
               const SizedBox(height: 20),
               Text(
@@ -50,58 +119,51 @@ class WorkspaceScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: ListView.separated(
-                  itemCount: conversations.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final conversation = conversations[index];
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: WorkbenchTokens.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: WorkbenchTokens.softBorder),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 8,
-                        ),
-                        title: Text(
-                          conversation.lastMessagePreview,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: ConversationStateBadge(conversation.status),
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ConversationScreen(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.separated(
+                        itemCount: _conversations.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final conversation = _conversations[index];
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: WorkbenchTokens.surface,
+                              borderRadius: BorderRadius.circular(20),
+                              border:
+                                  Border.all(color: WorkbenchTokens.softBorder),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 8,
+                              ),
+                              title: Text(
+                                conversation.lastMessagePreview,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 10),
+                                child:
+                                    ConversationStateBadge(conversation.status),
+                              ),
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: () => _openConversation(
                                 title: conversation.title,
-                                events: [
-                                  const ConversationEvent.message(
-                                    text: 'Start with the callback path',
-                                    role: 'user',
-                                  ),
-                                  ConversationEvent.action(
-                                    label: conversation.lastMessagePreview,
-                                  ),
-                                ],
-                                canConfirm: false,
-                                canInterrupt: true,
+                                conversationId: conversation.id,
+                                activeRunId: conversation.activeRunId,
+                                requiresConfirmation:
+                                    conversation.requiresConfirmation,
                               ),
                             ),
                           );
                         },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),

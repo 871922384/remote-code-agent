@@ -126,12 +126,16 @@ class ApiClient {
     await _postJson('/runs/$runId/interrupt', body: const {});
   }
 
-  Stream<RealtimeEvent> watchEvents() {
+  Stream<RealtimeEvent> watchEvents() async* {
     final channel = _webSocketFactory(_webSocketUri());
-    return channel.stream.map((raw) {
-      final json = jsonDecode(raw as String) as Map<String, dynamic>;
-      return RealtimeEvent.fromJson(json);
-    });
+    try {
+      await for (final raw in channel.stream) {
+        final json = jsonDecode(raw as String) as Map<String, dynamic>;
+        yield RealtimeEvent.fromJson(json);
+      }
+    } finally {
+      await channel.sink.close();
+    }
   }
 
   Uri _webSocketUri() {

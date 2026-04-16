@@ -7,9 +7,11 @@ class ConversationStrip extends StatelessWidget {
   const ConversationStrip({
     super.key,
     required this.conversations,
+    required this.onTapConversation,
   });
 
   final List<ConversationSummary> conversations;
+  final ValueChanged<ConversationSummary> onTapConversation;
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +24,7 @@ class ConversationStrip extends StatelessWidget {
         itemBuilder: (context, index) {
           return ConversationStripItem(
             conversation: conversations[index],
+            onTap: () => onTapConversation(conversations[index]),
           );
         },
       ),

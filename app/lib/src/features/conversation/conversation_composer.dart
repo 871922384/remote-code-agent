@@ -4,7 +4,16 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 import '../../theme/workbench_tokens.dart';
 
 class ConversationComposer extends StatelessWidget {
-  const ConversationComposer({super.key});
+  const ConversationComposer({
+    super.key,
+    required this.controller,
+    required this.onSend,
+    this.isSending = false,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final bool isSending;
 
   @override
   Widget build(BuildContext context) {
@@ -27,16 +36,17 @@ class ConversationComposer extends StatelessWidget {
         child: Column(
           children: [
             TDInput(
+              controller: controller,
               hintText: 'Continue the conversation',
               showBottomDivider: false,
               needClear: true,
             ),
             const SizedBox(height: 12),
             TDButton(
-              text: 'Send',
+              text: isSending ? 'Sending…' : 'Send',
               type: TDButtonType.fill,
               isBlock: true,
-              onTap: () {},
+              onTap: isSending ? null : onSend,
             ),
           ],
         ),
