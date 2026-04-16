@@ -109,4 +109,26 @@ void main() {
     expect(timeline[3].kind, 'error');
     expect(timeline[3].message, 'API unavailable');
   });
+
+  test('checkHealth returns true when the daemon health endpoint is ok',
+      () async {
+    final client = ApiClient(
+      baseUri: Uri.parse('http://127.0.0.1:3333'),
+      httpClient: MockClient((request) async {
+        expect(request.url.path, '/health');
+        return http.Response(
+          jsonEncode({
+            'ok': true,
+            'product': 'android-agent-workbench-daemon',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    final ok = await client.checkHealth();
+
+    expect(ok, isTrue);
+  });
 }

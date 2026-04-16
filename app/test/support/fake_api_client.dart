@@ -11,6 +11,8 @@ class FakeApiClient extends ApiClient {
     this.projects = const [],
     this.conversations = const {},
     this.timelines = const {},
+    this.healthOk = true,
+    this.projectsError,
     Stream<RealtimeEvent>? events,
   })  : _events = events ?? const Stream.empty(),
         super(baseUri: Uri.parse('http://127.0.0.1:3333'));
@@ -19,12 +21,19 @@ class FakeApiClient extends ApiClient {
   final Map<String, List<ConversationSummary>> conversations;
   final Map<String, List<ConversationEvent>> timelines;
   final Stream<RealtimeEvent> _events;
+  final bool healthOk;
+  final Object? projectsError;
 
   final List<String> appendedMessages = [];
   final List<String> startedPrompts = [];
 
   @override
-  Future<List<ProjectSummary>> fetchProjects() async => projects;
+  Future<List<ProjectSummary>> fetchProjects() async {
+    if (projectsError != null) {
+      throw projectsError!;
+    }
+    return projects;
+  }
 
   @override
   Future<List<ConversationSummary>> fetchConversations(String projectId) async {
@@ -74,4 +83,7 @@ class FakeApiClient extends ApiClient {
 
   @override
   Stream<RealtimeEvent> watchEvents() => _events;
+
+  @override
+  Future<bool> checkHealth() async => healthOk;
 }

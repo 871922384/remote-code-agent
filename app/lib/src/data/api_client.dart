@@ -18,17 +18,18 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
+  static Uri get defaultBaseUri => Uri.parse(
+        const String.fromEnvironment(
+          'AGENT_DAEMON_BASE_URL',
+          defaultValue: 'http://127.0.0.1:3333',
+        ),
+      );
+
   ApiClient({
     Uri? baseUri,
     http.Client? httpClient,
     WebSocketChannel Function(Uri uri)? webSocketFactory,
-  })  : baseUri = baseUri ??
-            Uri.parse(
-              const String.fromEnvironment(
-                'AGENT_DAEMON_BASE_URL',
-                defaultValue: 'http://127.0.0.1:3333',
-              ),
-            ),
+  })  : baseUri = baseUri ?? defaultBaseUri,
         _httpClient = httpClient ?? http.Client(),
         _webSocketFactory = webSocketFactory ?? WebSocketChannel.connect;
 
@@ -124,6 +125,11 @@ class ApiClient {
 
   Future<void> interruptRun(String runId) async {
     await _postJson('/runs/$runId/interrupt', body: const {});
+  }
+
+  Future<bool> checkHealth() async {
+    final json = await _getJson('/health');
+    return json['ok'] == true;
   }
 
   Stream<RealtimeEvent> watchEvents() async* {
