@@ -21,6 +21,9 @@ test('conversation service creates a conversation and appends a user message', (
 
   assert.equal(conversations.length, 1);
   assert.equal(conversations[0].status, 'idle');
+  assert.equal(conversations[0].lastMessagePreview, '先看为什么重复入库');
+  assert.equal(conversations[0].activeRunId, null);
+  assert.equal(conversations[0].requiresConfirmation, false);
   assert.equal(messages.length, 1);
   assert.equal(messages[0].role, 'user');
   assert.equal(messages[0].text, '先看为什么重复入库');

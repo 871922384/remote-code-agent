@@ -17,10 +17,19 @@ test('project service lists first-level folders from the workspace root and merg
 
   const db = openDatabase({ daemonDataDir: dataDir });
   migrate(db);
+  const betaProjectId = path.join(workspaceRoot, 'beta-admin');
   db.prepare(`
     INSERT INTO project_metadata (project_id, pinned, last_opened_at, last_active_conversation_id)
     VALUES (?, 1, '2026-04-15T10:00:00.000Z', 'conv-9')
-  `).run(path.join(workspaceRoot, 'beta-admin'));
+  `).run(betaProjectId);
+  db.prepare(`
+    INSERT INTO conversations (id, project_id, title, status, archived, created_at, updated_at)
+    VALUES ('conv-9', ?, 'Fix billing callback', 'running', 0, '2026-04-15T10:00:00.000Z', '2026-04-15T10:05:00.000Z')
+  `).run(betaProjectId);
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, role, text, created_at)
+    VALUES ('msg-9', 'conv-9', 'assistant', 'Reading billing_controller.dart', '2026-04-15T10:05:00.000Z')
+  `).run();
 
   const service = createProjectService({ workspaceRoot, db });
   const projects = service.listProjects();
@@ -31,6 +40,8 @@ test('project service lists first-level folders from the workspace root and merg
       path: project.path,
       pinned: project.pinned,
       lastActiveConversationId: project.lastActiveConversationId,
+      runningConversationCount: project.runningConversationCount,
+      lastSummary: project.lastSummary,
     })),
     [
       {
@@ -38,12 +49,16 @@ test('project service lists first-level folders from the workspace root and merg
         path: path.join(workspaceRoot, 'beta-admin'),
         pinned: true,
         lastActiveConversationId: 'conv-9',
+        runningConversationCount: 1,
+        lastSummary: 'Reading billing_controller.dart',
       },
       {
         name: 'alpha-api',
         path: path.join(workspaceRoot, 'alpha-api'),
         pinned: false,
         lastActiveConversationId: null,
+        runningConversationCount: 0,
+        lastSummary: 'No active conversations right now.',
       },
     ],
   );

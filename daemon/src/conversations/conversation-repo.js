@@ -5,6 +5,16 @@ function createConversationRepo(db) {
     INSERT INTO conversations (id, project_id, title, status, archived, created_at, updated_at)
     VALUES (?, ?, ?, ?, 0, ?, ?)
   `);
+  const updateConversationStatus = db.prepare(`
+    UPDATE conversations
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `);
+  const touchConversation = db.prepare(`
+    UPDATE conversations
+    SET updated_at = ?
+    WHERE id = ?
+  `);
   const listByProject = db.prepare(`
     SELECT id, project_id, title, status, created_at, updated_at
     FROM conversations
@@ -34,6 +44,12 @@ function createConversationRepo(db) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
+    },
+    updateStatus({ conversationId, status, now }) {
+      updateConversationStatus.run(status, now, conversationId);
+    },
+    touch({ conversationId, now }) {
+      touchConversation.run(now, conversationId);
     },
   };
 }
