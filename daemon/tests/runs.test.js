@@ -21,6 +21,7 @@ test('run service persists action events, assistant output, and completion state
 
   const db = openDatabase({ daemonDataDir: path.join(tempRoot, 'data') });
   migrate(db);
+  const publishedEvents = [];
 
   const conversationService = createConversationService({ db });
   const conversation = conversationService.createConversation({
@@ -29,7 +30,15 @@ test('run service persists action events, assistant output, and completion state
     openingMessage: '看下为什么超时',
   });
 
-  const runService = createRunService({ db, codexBin: fakeCodex });
+  const runService = createRunService({
+    db,
+    codexBin: fakeCodex,
+    eventBroker: {
+      publish(event) {
+        publishedEvents.push(event);
+      },
+    },
+  });
   const run = await runService.startRun({
     conversationId: conversation.id,
     cwd: tempRoot,
@@ -38,7 +47,16 @@ test('run service persists action events, assistant output, and completion state
 
   assert.equal(run.status, 'completed');
   const events = runService.listRunEvents(run.id);
+  const conversationEvents = runService.listConversationEvents(conversation.id);
+  const conversations = conversationService.listConversations(tempRoot);
+
   assert.equal(events[0].kind, 'run.action');
   assert.equal(events[1].kind, 'message.created');
   assert.equal(events[2].kind, 'run.error');
+  assert.equal(conversationEvents[0].kind, 'run.action');
+  assert.equal(conversationEvents[2].kind, 'run.error');
+  assert.equal(conversations[0].status, 'completed');
+  assert.equal(publishedEvents[0].kind, 'run.started');
+  assert.equal(publishedEvents[0].conversationId, conversation.id);
+  assert.equal(publishedEvents[1].conversationId, conversation.id);
 });

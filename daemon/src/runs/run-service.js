@@ -11,6 +11,11 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     VALUES (?, ?, ?, 0, ?, NULL)
   `);
   const updateRun = db.prepare(`UPDATE runs SET status = ?, ended_at = ? WHERE id = ?`);
+  const updateConversationStatus = db.prepare(`
+    UPDATE conversations
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `);
   const insertMessage = db.prepare(`
     INSERT INTO messages (id, conversation_id, role, text, created_at)
     VALUES (?, ?, ?, ?, ?)
@@ -25,11 +30,19 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     WHERE run_id = ?
     ORDER BY created_at ASC
   `);
+  const selectConversationEvents = db.prepare(`
+    SELECT run_events.kind, run_events.payload_json, run_events.created_at
+    FROM run_events
+    JOIN runs ON runs.id = run_events.run_id
+    WHERE runs.conversation_id = ?
+    ORDER BY run_events.created_at ASC
+  `);
 
   async function startRun({ conversationId, cwd, prompt }) {
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
     insertRun.run(runId, conversationId, 'running', startedAt);
+    updateConversationStatus.run('running', startedAt, conversationId);
 
     const { command, args } = buildCodexCommand({ codexBin, prompt });
     const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -37,7 +50,12 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     const stream = readline.createInterface({ input: child.stdout });
 
     if (eventBroker) {
-      eventBroker.publish({ kind: 'run.started', runId, conversationId, createdAt: startedAt });
+      eventBroker.publish({
+        kind: 'run.started',
+        runId,
+        conversationId,
+        createdAt: startedAt,
+      });
     }
 
     const closePromise = new Promise((resolve, reject) => {
@@ -60,25 +78,52 @@ function createRunService({ db, codexBin, eventBroker = null }) {
           insertMessage.run(randomUUID(), conversationId, event.payload.role, event.payload.text, createdAt);
         }
         if (eventBroker) {
-          eventBroker.publish({ runId, ...event, createdAt });
+          eventBroker.publish({ runId, conversationId, ...event, createdAt });
         }
       }
 
       await closePromise;
+      const endedAt = new Date().toISOString();
+      updateRun.run('completed', endedAt, runId);
+      updateConversationStatus.run('completed', endedAt, conversationId);
+      if (eventBroker) {
+        eventBroker.publish({
+          kind: 'run.completed',
+          runId,
+          conversationId,
+          createdAt: endedAt,
+        });
+      }
+      return { id: runId, conversationId, status: 'completed', startedAt, endedAt };
+    } catch (error) {
+      const endedAt = new Date().toISOString();
+      updateRun.run('failed', endedAt, runId);
+      updateConversationStatus.run('failed', endedAt, conversationId);
+      if (eventBroker) {
+        eventBroker.publish({
+          kind: 'run.failed',
+          runId,
+          conversationId,
+          createdAt: endedAt,
+          payload: { message: error.message },
+        });
+      }
+      throw error;
     } finally {
       activeRuns.delete(runId);
     }
-
-    const endedAt = new Date().toISOString();
-    updateRun.run('completed', endedAt, runId);
-    if (eventBroker) {
-      eventBroker.publish({ kind: 'run.completed', runId, createdAt: endedAt });
-    }
-    return { id: runId, conversationId, status: 'completed', startedAt, endedAt };
   }
 
   function listRunEvents(runId) {
     return selectEvents.all(runId).map((row) => ({
+      kind: row.kind,
+      payload: JSON.parse(row.payload_json),
+      createdAt: row.created_at,
+    }));
+  }
+
+  function listConversationEvents(conversationId) {
+    return selectConversationEvents.all(conversationId).map((row) => ({
       kind: row.kind,
       payload: JSON.parse(row.payload_json),
       createdAt: row.created_at,
@@ -90,10 +135,25 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     if (!child) return false;
     child.kill('SIGINT');
     activeRuns.delete(runId);
+    const conversationRow = db
+      .prepare(`SELECT conversation_id FROM runs WHERE id = ?`)
+      .get(runId);
     const endedAt = new Date().toISOString();
     updateRun.run('interrupted', endedAt, runId);
+    if (conversationRow?.conversation_id) {
+      updateConversationStatus.run(
+        'interrupted',
+        endedAt,
+        conversationRow.conversation_id,
+      );
+    }
     if (eventBroker) {
-      eventBroker.publish({ kind: 'run.interrupted', runId, createdAt: endedAt });
+      eventBroker.publish({
+        kind: 'run.interrupted',
+        runId,
+        conversationId: conversationRow?.conversation_id || null,
+        createdAt: endedAt,
+      });
     }
     return true;
   }
@@ -103,7 +163,15 @@ function createRunService({ db, codexBin, eventBroker = null }) {
     if (!child) return { ok: false };
     child.stdin.write('y\n');
     if (eventBroker) {
-      eventBroker.publish({ kind: 'run.waiting_confirmation', runId, createdAt: new Date().toISOString() });
+      const conversationRow = db
+        .prepare(`SELECT conversation_id FROM runs WHERE id = ?`)
+        .get(runId);
+      eventBroker.publish({
+        kind: 'run.waiting_confirmation',
+        runId,
+        conversationId: conversationRow?.conversation_id || null,
+        createdAt: new Date().toISOString(),
+      });
     }
     return { ok: true };
   }
@@ -111,6 +179,7 @@ function createRunService({ db, codexBin, eventBroker = null }) {
   return {
     startRun,
     listRunEvents,
+    listConversationEvents,
     interruptRun,
     confirmRun,
   };

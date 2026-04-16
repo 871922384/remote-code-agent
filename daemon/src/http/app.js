@@ -31,6 +31,11 @@ function createApp({ projectService, conversationService, runService } = {}) {
       messages: conversationService ? conversationService.listMessages(req.params.conversationId) : [],
     });
   });
+  app.get('/conversations/:conversationId/events', (req, res) => {
+    res.json({
+      events: runService ? runService.listConversationEvents(req.params.conversationId) : [],
+    });
+  });
   app.post('/conversations/:conversationId/messages', (req, res) => {
     const message = conversationService.appendUserMessage({
       conversationId: req.params.conversationId,

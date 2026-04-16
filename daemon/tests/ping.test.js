@@ -3,6 +3,13 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const http = require('node:http');
+const fs = require('node:fs');
+const os = require('node:os');
+const { openDatabase } = require('../src/db/open-db');
+const { migrate } = require('../src/db/migrate');
+const { createConversationService } = require('../src/conversations/conversation-service');
+const { createRunService } = require('../src/runs/run-service');
+const { createApp } = require('../src/http/app');
 
 const daemonRoot = path.join(__dirname, '..');
 const entryPath = path.join(daemonRoot, 'src', 'index.js');
@@ -60,4 +67,56 @@ test('daemon exposes a health endpoint', async () => {
   assert.equal(response.body.product, 'android-agent-workbench-daemon');
 
   child.kill('SIGTERM');
+});
+
+test('daemon exposes conversation event snapshots over http', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'daemon-http-'));
+  const fakeCodex = path.join(tempRoot, 'fake-codex.sh');
+  fs.writeFileSync(fakeCodex, [
+    '#!/usr/bin/env bash',
+    'printf \'{"type":"action","name":"reading files"}\\n\'',
+    'printf \'{"type":"assistant","text":"done"}\\n\'',
+  ].join('\n'));
+  fs.chmodSync(fakeCodex, 0o755);
+
+  const db = openDatabase({ daemonDataDir: path.join(tempRoot, 'data') });
+  migrate(db);
+
+  const conversationService = createConversationService({ db });
+  const conversation = conversationService.createConversation({
+    projectId: tempRoot,
+    title: 'live route test',
+    openingMessage: 'start',
+  });
+  const runService = createRunService({ db, codexBin: fakeCodex });
+  await runService.startRun({
+    conversationId: conversation.id,
+    cwd: tempRoot,
+    prompt: 'start',
+  });
+
+  const app = createApp({
+    projectService: { listProjects: () => [] },
+    conversationService,
+    runService,
+  });
+  const server = await new Promise((resolve) => {
+    const started = app.listen(0, '127.0.0.1', () => resolve(started));
+  });
+  const port = server.address().port;
+
+  const response = await getJson(port, `/conversations/${conversation.id}/events`);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.events[0].kind, 'run.action');
+  assert.equal(response.body.events[0].payload.label, 'reading files');
+
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 });
