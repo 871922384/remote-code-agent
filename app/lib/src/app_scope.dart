@@ -12,8 +12,7 @@ class WorkbenchScope extends InheritedWidget {
   final ApiClient apiClient;
 
   static WorkbenchScope of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<WorkbenchScope>();
+    final scope = context.dependOnInheritedWidgetOfExactType<WorkbenchScope>();
     assert(scope != null, 'WorkbenchScope not found in widget tree.');
     return scope!;
   }

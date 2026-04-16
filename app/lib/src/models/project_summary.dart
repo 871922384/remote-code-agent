@@ -20,8 +20,8 @@ class ProjectSummary {
       id: json['id'] as String,
       name: json['name'] as String,
       path: json['path'] as String,
-      lastSummary:
-          json['lastSummary'] as String? ?? 'No active conversations right now.',
+      lastSummary: json['lastSummary'] as String? ??
+          'No active conversations right now.',
       runningConversationCount:
           (json['runningConversationCount'] as num?)?.toInt() ?? 0,
       pinned: json['pinned'] as bool? ?? false,

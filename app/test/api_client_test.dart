@@ -41,7 +41,8 @@ void main() {
     expect(projects.first.pinned, isTrue);
   });
 
-  test('fetchConversationTimeline merges messages and run events in timestamp order',
+  test(
+      'fetchConversationTimeline merges messages and run events in timestamp order',
       () async {
     final client = ApiClient(
       baseUri: Uri.parse('http://127.0.0.1:3333'),
