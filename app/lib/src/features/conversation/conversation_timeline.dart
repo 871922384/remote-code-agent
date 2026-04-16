@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+
 import '../../models/conversation_event.dart';
+import 'action_card.dart';
+import 'error_card.dart';
+import 'message_card.dart';
 
 class ConversationTimeline extends StatelessWidget {
   const ConversationTimeline({super.key, required this.events});
@@ -9,30 +13,17 @@ class ConversationTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       itemCount: events.length,
       itemBuilder: (context, index) {
         final event = events[index];
         if (event.kind == 'action') {
-          return Card(
-            child: ListTile(
-              leading: const Icon(Icons.settings_suggest),
-              title: Text(event.label!),
-            ),
-          );
+          return ActionCard(label: event.label!);
         }
         if (event.kind == 'error') {
-          return Card(
-            color: const Color(0xFFFFE5E5),
-            child: ListTile(
-              leading: const Icon(Icons.error_outline),
-              title: Text(event.message!),
-            ),
-          );
+          return ErrorCard(message: event.message!);
         }
-        return ListTile(
-          title: Text(event.text!),
-          subtitle: Text(event.role!),
-        );
+        return MessageCard(text: event.text!, role: event.role!);
       },
     );
   }

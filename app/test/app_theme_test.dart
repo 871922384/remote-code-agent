@@ -8,6 +8,6 @@ void main() {
 
     final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(materialApp.theme?.scaffoldBackgroundColor, const Color(0xFFF7F8FC));
-    expect(find.text('Projects'), findsOneWidget);
+    expect(find.text('Your workspaces'), findsOneWidget);
   });
 }

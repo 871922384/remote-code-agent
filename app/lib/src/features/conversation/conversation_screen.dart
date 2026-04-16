@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
+
 import '../../models/conversation_event.dart';
 import 'conversation_composer.dart';
 import 'conversation_timeline.dart';
@@ -24,12 +26,29 @@ class ConversationScreen extends StatelessWidget {
       body: Column(
         children: [
           Expanded(child: ConversationTimeline(events: events)),
-          Row(
-            children: [
-              if (canConfirm) FilledButton(onPressed: () {}, child: const Text('Confirm')),
-              const SizedBox(width: 12),
-              if (canInterrupt) OutlinedButton(onPressed: () {}, child: const Text('Interrupt')),
-            ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                if (canConfirm)
+                  Expanded(
+                    child: TDButton(
+                      text: 'Confirm',
+                      type: TDButtonType.fill,
+                      onTap: () {},
+                    ),
+                  ),
+                if (canConfirm && canInterrupt) const SizedBox(width: 12),
+                if (canInterrupt)
+                  Expanded(
+                    child: TDButton(
+                      text: 'Interrupt',
+                      type: TDButtonType.outline,
+                      onTap: () {},
+                    ),
+                  ),
+              ],
+            ),
           ),
           const ConversationComposer(),
         ],

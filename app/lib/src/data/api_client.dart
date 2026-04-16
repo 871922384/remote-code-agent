@@ -22,9 +22,9 @@ const List<ProjectSummary> seededProjects = [
 const List<ConversationSummary> seededConversations = [
   ConversationSummary(
     id: 'c-1',
-    title: '修复支付回调',
+    title: 'Fix billing callback',
     status: 'running',
-    lastMessagePreview: '正在检查 controller',
+    lastMessagePreview: 'Reading billing_controller.dart',
   ),
 ];
 

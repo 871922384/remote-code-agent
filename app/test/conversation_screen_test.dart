@@ -4,14 +4,16 @@ import 'package:agent_workbench/src/features/conversation/conversation_screen.da
 import 'package:agent_workbench/src/models/conversation_event.dart';
 
 void main() {
-  testWidgets('shows messages, action cards, error cards, and confirm/interruption controls', (tester) async {
+  testWidgets('shows product cards and the tdesign composer actions',
+      (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: ConversationScreen(
-          title: '修复支付回调',
+          title: 'Fix billing callback',
           events: const [
-            ConversationEvent.message(text: '先看为什么重复入库', role: 'user'),
-            ConversationEvent.action(label: 'reading files'),
+            ConversationEvent.message(
+                text: 'Start with the callback path', role: 'user'),
+            ConversationEvent.action(label: 'Reading billing_controller.dart'),
             ConversationEvent.error(message: 'API unavailable'),
           ],
           canConfirm: true,
@@ -20,9 +22,12 @@ void main() {
       ),
     );
 
-    expect(find.text('reading files'), findsOneWidget);
+    expect(find.text('Reading billing_controller.dart'), findsOneWidget);
     expect(find.text('API unavailable'), findsOneWidget);
+    expect(find.text('The model provider could not be reached right now.'),
+        findsOneWidget);
     expect(find.text('Confirm'), findsOneWidget);
     expect(find.text('Interrupt'), findsOneWidget);
+    expect(find.text('Continue the conversation'), findsOneWidget);
   });
 }

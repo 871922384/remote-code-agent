@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../../models/conversation_summary.dart';
+import 'conversation_strip_item.dart';
 
 class ConversationStrip extends StatelessWidget {
   const ConversationStrip({
@@ -12,17 +14,14 @@ class ConversationStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 88,
+      height: 156,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: conversations.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
-          final conversation = conversations[index];
-          final initial = conversation.title.isEmpty ? '?' : conversation.title.characters.first;
-          return Chip(
-            avatar: CircleAvatar(child: Text(initial)),
-            label: Text(conversation.title),
+          return ConversationStripItem(
+            conversation: conversations[index],
           );
         },
       ),

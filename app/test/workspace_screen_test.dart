@@ -4,7 +4,9 @@ import 'package:agent_workbench/src/features/workspace/workspace_screen.dart';
 import 'package:agent_workbench/src/models/conversation_summary.dart';
 
 void main() {
-  testWidgets('renders a horizontal conversation strip', (tester) async {
+  testWidgets(
+      'renders the workspace header, conversation strip, and new conversation button',
+      (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: WorkspaceScreen(
@@ -12,9 +14,9 @@ void main() {
           conversations: const [
             ConversationSummary(
               id: 'c-1',
-              title: '修复支付回调',
+              title: 'Fix billing callback',
               status: 'running',
-              lastMessagePreview: '正在检查 controller',
+              lastMessagePreview: 'Reading billing_controller.dart',
             ),
           ],
         ),
@@ -22,6 +24,8 @@ void main() {
     );
 
     expect(find.text('alpha-api'), findsOneWidget);
-    expect(find.text('修复支付回调'), findsOneWidget);
+    expect(find.text('New conversation'), findsOneWidget);
+    expect(find.text('Running'), findsWidgets);
+    expect(find.text('Reading billing_controller.dart'), findsWidgets);
   });
 }
